@@ -113,6 +113,25 @@ TARGETS=windows/amd64 OPENCODE2API_SRC=<opencode2api-src> scripts/build-native-e
 
 如访问 `proxy.golang.org` 慢，脚本默认使用 `https://goproxy.cn,direct`，可用 `GOPROXY_VALUE` 覆盖。
 
+### 发布流程（GitHub Actions）
+
+推送到 `main` 后，`.github/workflows/release.yml` 会自动：
+
+1. 用 JDK 21 + Gradle 运行测试并构建插件；
+2. 从 `gradle.properties` 读取 `pluginVersion`；
+3. 从 `CHANGELOG.md` 提取对应版本说明，创建带 changelog 的 **annotated tag** `v<version>`；
+4. 创建/更新 GitHub Release，把同样的 changelog 写入 Release 说明，并上传 `ai-git-commit-<version>.zip` 安装包。
+
+发布新版本时：
+
+```bash
+# 1. 修改 gradle.properties 的 pluginVersion
+# 2. 在 CHANGELOG.md 增加对应版本小节
+git add gradle.properties CHANGELOG.md
+git commit -m "chore: release x.y.z"
+git push origin main
+```
+
 ### 运行测试
 
 ```bash
