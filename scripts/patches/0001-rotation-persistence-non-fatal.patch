@@ -1,0 +1,14 @@
+diff --git a/internal/rotation/state.go b/internal/rotation/state.go
+index 142805f..b9069d8 100644
+--- a/internal/rotation/state.go
++++ b/internal/rotation/state.go
+@@ -98,9 +98,6 @@ func New(path string, cfg config.RotationConfig) (*Manager, error) {
+ 		return nil, fmt.Errorf("invalid rotation groups")
+ 	}
+ 	m.Configure(cfg)
+-	if m.state.PersistenceError != "" {
+-		return nil, fmt.Errorf("cannot persist rotation state")
+-	}
+ 	return m, nil
+ }
+ 

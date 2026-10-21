@@ -1,0 +1,28 @@
+AI Git Commit
+Copyright (C) 2026 AI Git Commit contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+The file LICENSE contains the full text of the GNU General Public License
+version 3.
+
+Third-party components
+----------------------
+
+The plugin bundles prebuilt binaries of "opencode2api" (GPL-3.0-or-later):
+
+  Project: https://github.com/jasonxu114514/opencode2api
+  Pinned commit: 0bb23c7
+  License: GPL-3.0-or-later
+  License copy: src/main/resources/META-INF/third-party/opencode2api/LICENSE
+
+Source code for the bundled binaries can be obtained from the project URL
+above at the pinned commit. The binaries are started as a separate local
+process and are not linked into the plugin's Java code.

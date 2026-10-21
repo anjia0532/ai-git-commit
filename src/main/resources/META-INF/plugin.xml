@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<idea-plugin>
+    <id>dev.aicommit.jetbrains</id>
+    <name>AI Git Commit</name>
+    <vendor>AI Git Commit</vendor>
+
+    <description><![CDATA[
+    <p>根据提交面板中选中的改动生成 Git 提交信息，支持任意 OpenAI 兼容模型。插件内置自动管理的
+    OpenCode Zen 引擎，默认免费模型无需安装或运行单独网关。</p>
+    <ul>
+      <li>提交工具栏一键生成，支持快捷键。</li>
+      <li>自动读取模型参数（上下文长度、输入/输出上限、推理档位），无需逐个模型手填。</li>
+      <li>打开项目和提交前探测模型可用性，自动绕过地区受限、已下架和临时限流的模型。</li>
+      <li>支持中文/英文提交信息和插件界面，默认提示词可编辑。</li>
+      <li>支持 IntelliJ IDEA、PyCharm、GoLand、WebStorm 等基于 IntelliJ 平台的 IDE。</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.vcs</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable parentId="tools"
+                                 instance="dev.aicommit.settings.AiCommitConfigurable"
+                                 id="dev.aicommit.settings"
+                                 displayName="AI Git Commit"/>
+        <notificationGroup id="AI Git Commit" displayType="BALLOON" isLogByDefault="true"/>
+        <postStartupActivity implementation="dev.aicommit.startup.ProjectOpenActivity"/>
+    </extensions>
+
+    <actions>
+        <action id="AiCommit.GenerateCommitMessage"
+                class="dev.aicommit.action.GenerateCommitMessageAction"
+                icon="dev.aicommit.icons.AiCommitIcons.GENERATE"
+                text="Generate Commit Message with AI"
+                description="Generate a commit message from the selected changes">
+            <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt shift G"/>
+        </action>
+    </actions>
+</idea-plugin>

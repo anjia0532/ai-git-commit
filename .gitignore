@@ -1,0 +1,18 @@
+# Build output
+build/
+out/
+.gradle/
+.kotlin/
+.intellijPlatform/
+verification-*/
+*.hprof
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
