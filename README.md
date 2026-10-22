@@ -73,7 +73,7 @@ PROXY=http://127.0.0.1:7890 scripts/build-in-docker.sh buildPlugin
 产物：
 
 ```text
-build/distributions/ai-git-commit-1.0.0.zip
+build/distributions/ai-git-commit-<version>.zip
 ```
 
 在 IDE 中打开 `Settings | Plugins`，点齿轮 → `Install Plugin from Disk...`，选择上面的 zip，重启 IDE。
@@ -281,6 +281,9 @@ http://127.0.0.1:51234/v1
 - 其他 OpenAI 兼容路径（`/v1/chat/completions`、`/v1/responses`、`/v1/messages`）会透明转发到内置引擎，支持流式响应。
 - 端点只监听 `127.0.0.1`；IDE 退出后端点失效。任何本机进程都可以使用它，请勿把端口转发到局域网/公网。
 - 引擎端口会变，但对外端点端口在本次 IDE 会话内保持稳定；重启引擎后仍使用同一个复制地址。
+- 路径会自动归一化：尾部斜杠、重复斜杠、重复 `/v1`、客户端重复拼接 `/chat/completions` 都能正确匹配。
+- 请求日志：设置页会显示日志路径（通常是 IDE 系统目录下的 `ai-git-commit/public-api-requests.log`），每行记录 `方法 原始路径 -> 转发路径 | 状态码 | 耗时`。第三方工具报错时先看这个文件。
+- 未知路径返回 OpenAI 风格的 JSON 404，`error.message` 会说明收到的路径和支持的端点，不再只有 `404 page not found`。
 
 ---
 

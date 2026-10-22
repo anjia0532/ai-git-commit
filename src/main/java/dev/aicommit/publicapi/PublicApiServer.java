@@ -69,6 +69,7 @@ public final class PublicApiServer implements Disposable {
     private volatile AiCommitConfig config;
     private volatile String engineBase = "";
     private volatile String engineKey = "";
+    private volatile java.nio.file.Path requestLog;
 
     public static PublicApiServer getInstance() {
         return ApplicationManager.getApplication().getService(PublicApiServer.class);
@@ -88,11 +89,16 @@ public final class PublicApiServer implements Disposable {
         try {
             HttpServer created = HttpServer.create(
                     new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-            created.createContext("/v1/", this::handle);
+            // Root context: clients that request the bare base URL (for a
+            // "test connection" probe) must reach the handler too. Path
+            // normalization turns any reasonable shape into /v1/<route>.
+            created.createContext("/", this::handle);
             created.setExecutor(executor);
             created.start();
             server = created;
-            LOG.info("Public model endpoint started on " + currentBaseUrl());
+            requestLog = requestLogPath();
+            LOG.info("Public model endpoint started on " + currentBaseUrl()
+                    + " (request log: " + requestLog + ")");
         } catch (IOException e) {
             LOG.warn("Cannot start the public model endpoint", e);
         }
@@ -102,6 +108,13 @@ public final class PublicApiServer implements Disposable {
         HttpServer current = server;
         return current == null ? null
                 : "http://127.0.0.1:" + current.getAddress().getPort() + "/v1";
+    }
+
+    /** Where each proxied request is recorded; also shown in the settings page. */
+    public static java.nio.file.Path requestLogPath() {
+        return java.nio.file.Paths.get(
+                com.intellij.openapi.application.PathManager.getSystemPath(),
+                "ai-git-commit", "public-api-requests.log");
     }
 
     @Override
@@ -115,16 +128,47 @@ public final class PublicApiServer implements Disposable {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath();
-        if ("GET".equalsIgnoreCase(exchange.getRequestMethod())
-                && ("/v1/models".equals(path) || "/v1/models/".equals(path))) {
-            handleModels(exchange);
+        long startedAt = System.currentTimeMillis();
+        String method = exchange.getRequestMethod();
+        String rawPath = exchange.getRequestURI().getPath();
+        String normalized = PublicApiPaths.normalize(rawPath);
+        String suffix = PublicApiPaths.stripV1(normalized);
+
+        if (!PublicApiPaths.isKnownEngineRoute(suffix)) {
+            sendUnknownRoute(exchange, method, rawPath, normalized, startedAt);
             return;
         }
-        proxy(exchange);
+        if ("/models".equals(suffix) && "GET".equalsIgnoreCase(method)) {
+            handleModels(exchange, method, rawPath, startedAt);
+            return;
+        }
+        proxy(exchange, suffix, method, rawPath, startedAt);
     }
 
-    private void handleModels(HttpExchange exchange) throws IOException {
+    /**
+     * Answers an unknown path with an OpenAI-shaped error that names the
+     * offending path and the routes this facade serves. The engine's own Go mux
+     * would only say {@code 404 page not found}, which is what made client
+     * misconfiguration so hard to diagnose.
+     */
+    private void sendUnknownRoute(HttpExchange exchange, String method, String rawPath,
+                                  String normalized, long startedAt) throws IOException {
+        String message = "Unknown endpoint '" + rawPath + "' (canonical: " + normalized
+                + "). This endpoint accepts: " + PublicApiPaths.supportedRoutes()
+                + ". Use the base URL http://127.0.0.1:<port>/v1 and let the client append "
+                + "/chat/completions or /models itself.";
+        JsonObject error = new JsonObject();
+        error.addProperty("message", message);
+        error.addProperty("type", "invalid_request_error");
+        error.addProperty("code", "unknown_endpoint");
+        JsonObject root = new JsonObject();
+        root.add("error", error);
+        send(exchange, 404, "application/json", root.toString().getBytes(StandardCharsets.UTF_8));
+        logRequest(method, rawPath, normalized + " (rejected)", 404, startedAt);
+    }
+
+    private void handleModels(HttpExchange exchange, String method, String rawPath,
+                              long startedAt) throws IOException {
         String body;
         try {
             ModelCatalog catalog = ModelCatalogService.getInstance()
@@ -142,6 +186,7 @@ public final class PublicApiServer implements Disposable {
             body = "{\"object\":\"list\",\"data\":[]}";
         }
         send(exchange, 200, "application/json", body.getBytes(StandardCharsets.UTF_8));
+        logRequest(method, rawPath, "/models", 200, startedAt);
     }
 
     private boolean isAvailable(String model) {
@@ -152,17 +197,17 @@ public final class PublicApiServer implements Disposable {
     private ModelAvailability availability(String model) {
         return ModelHealthService.getInstance().latest(model);
     }
-    private void proxy(HttpExchange exchange) throws IOException {
+
+    private void proxy(HttpExchange exchange, String suffix, String method, String rawPath,
+                       long startedAt) throws IOException {
+        String query = exchange.getRequestURI().getRawQuery();
+        URI target = URI.create(engineBase + suffix + (query == null ? "" : "?" + query));
+        int status = 502;
         try {
             byte[] requestBody = exchange.getRequestBody().readAllBytes();
-            String path = exchange.getRequestURI().getRawPath();
-            String suffix = path.startsWith("/v1") ? path.substring(3) : path;
-            String query = exchange.getRequestURI().getRawQuery();
-            URI target = URI.create(engineBase + suffix + (query == null ? "" : "?" + query));
-
             HttpRequest.Builder builder = HttpRequest.newBuilder(target)
                     .timeout(Duration.ofSeconds(600))
-                    .method(exchange.getRequestMethod(), requestBody.length == 0
+                    .method(method, requestBody.length == 0
                             ? HttpRequest.BodyPublishers.noBody()
                             : HttpRequest.BodyPublishers.ofByteArray(requestBody));
             for (String name : exchange.getRequestHeaders().keySet()) {
@@ -188,9 +233,9 @@ public final class PublicApiServer implements Disposable {
                     headers.add(name, value);
                 }
             });
-            int status = response.statusCode();
+            status = response.statusCode();
             boolean noBody = status == 204 || status == 304
-                    || "HEAD".equalsIgnoreCase(exchange.getRequestMethod());
+                    || "HEAD".equalsIgnoreCase(method);
             exchange.sendResponseHeaders(status, noBody ? -1 : 0);
             if (!noBody) {
                 try (InputStream in = response.body(); OutputStream out = exchange.getResponseBody()) {
@@ -201,12 +246,14 @@ public final class PublicApiServer implements Disposable {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            sendError(exchange, 502, "Request interrupted");
+            status = 502;
+            sendError(exchange, status, "Request interrupted");
         } catch (Throwable t) {
-            LOG.info("Public API proxy failed: " + t.getMessage());
-            sendError(exchange, 502, "Upstream request failed: " + t.getMessage());
+            status = 502;
+            sendError(exchange, status, "Upstream request failed: " + t.getMessage());
         } finally {
             exchange.close();
+            logRequest(method, rawPath, suffix, status, startedAt);
         }
     }
 
@@ -218,6 +265,32 @@ public final class PublicApiServer implements Disposable {
             out.write(body);
         } finally {
             exchange.close();
+        }
+    }
+
+    /**
+     * Appends one line per proxied request so third-party client failures are
+     * diagnosable without an IDE log viewer. Silent on any IO problem: the
+     * endpoint is a convenience, not a logging service.
+     */
+    private void logRequest(String method, String rawPath, String targetPath, int status,
+                            long startedAtMillis) {
+        java.nio.file.Path path = requestLog;
+        if (path == null) {
+            return;
+        }
+        try {
+            java.nio.file.Files.createDirectories(path.getParent());
+            String line = java.time.Instant.now()
+                    + " " + method + " " + rawPath
+                    + " -> " + targetPath
+                    + " | " + status
+                    + " | " + (System.currentTimeMillis() - startedAtMillis) + "ms"
+                    + System.lineSeparator();
+            java.nio.file.Files.writeString(path, line, StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException ignored) {
+            // A read-only profile must not break request serving.
         }
     }
 

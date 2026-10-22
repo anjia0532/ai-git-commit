@@ -75,6 +75,7 @@ public final class AiCommitConfigurable implements Configurable {
     private JButton restartButton;
     private JBTextField publicEndpointField;
     private JButton copyEndpointButton;
+    private JBLabel publicRequestLogLabel;
 
     private JCheckBox includeFreeCheck;
     private DefaultListModel<String> modelListModel;
@@ -334,6 +335,9 @@ public final class AiCommitConfigurable implements Configurable {
         JBLabel publicEndpointHint = new JBLabel(Messages.tr("settings.provider.publicEndpointHint"));
         publicEndpointHint.setForeground(JBColor.GRAY);
         form.addComponent(publicEndpointHint);
+        publicRequestLogLabel = new JBLabel();
+        publicRequestLogLabel.setForeground(JBColor.GRAY);
+        form.addComponent(publicRequestLogLabel);
         JBLabel builtInNote = new JBLabel(Messages.tr("settings.provider.builtInNote"));
         builtInNote.setForeground(JBColor.GRAY);
         form.addComponent(builtInNote);
@@ -670,6 +674,12 @@ public final class AiCommitConfigurable implements Configurable {
         String url = builtIn ? PublicApiServer.getInstance().currentBaseUrl() : null;
         publicEndpointField.setText(url == null ? "" : url);
         copyEndpointButton.setEnabled(builtIn);
+        if (publicRequestLogLabel != null) {
+            publicRequestLogLabel.setText(builtIn
+                    ? Messages.tr("settings.provider.publicEndpointLog",
+                    PublicApiServer.requestLogPath())
+                    : " ");
+        }
     }
 
     private void copyPublicEndpoint() {

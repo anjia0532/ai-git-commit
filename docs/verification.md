@@ -6,7 +6,7 @@ Date: 2026-10-21
 
 - Tool: IntelliJ Plugin Verifier 1.411
 - IDE: `IU-262.10968.63` (IntelliJ IDEA Ultimate 2026.2.3)
-- Plugin: `dev.aicommit.jetbrains:1.0.0`
+- Plugin: `dev.aicommit.jetbrains:1.0.0` (verifier run); 1.0.1 only changes public-endpoint path normalization and request logging, with no new platform API usage
 - Result: **Compatible**, no deprecated API usages
 - Dynamic plugin eligibility: can probably be enabled/disabled without an IDE restart
 
@@ -14,7 +14,7 @@ The plugin is compiled against IntelliJ Platform 2024.2.5 (`since-build 242`). T
 
 ## Tests
 
-`scripts/build-in-docker.sh test` runs 56 tests, 0 failures, including:
+`scripts/build-in-docker.sh test` runs 68 tests, 0 failures (1 opt-in live test skipped), including:
 
 - SSE streaming parser, plain JSON responses, HTTP errors and cancellation paths
 - request payload construction (`reasoning_effort`, `max_tokens`/`max_completion_tokens`, temperature rules)
@@ -22,6 +22,7 @@ The plugin is compiled against IntelliJ Platform 2024.2.5 (`since-build 242`). T
 - model availability classification (available / region blocked / retired / rate limited / auth failure)
 - model availability cache freshness
 - public endpoint model filtering (only free and available models)
+- public endpoint path normalization (trailing slash, duplicate slashes, duplicate `/v1`, duplicated route, bare base URL) and a stub-engine routing test
 - model rotation and failover ordering
 - diff rendering and prompt budget/truncation
 - commit message cleanup
