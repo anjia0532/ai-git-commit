@@ -51,10 +51,16 @@ public final class ModelWarmupService {
                 ProviderEndpoint endpoint = ProviderResolver.resolve(config);
                 ModelCatalog catalog = ModelCatalogService.getInstance()
                         .get(config, endpoint.baseUrl(), endpoint.apiKey(), true, () -> false);
-                List<String> models = catalog.effectiveModelIds(config.modelIds(), config.includeFreeModels());
+                List<String> models = config.modelIds();
+                if (models.isEmpty()) {
+                    models = catalog.effectiveModelIds(config.modelIds(), config.includeFreeModels());
+                }
                 if (!models.isEmpty()) {
+                    // Probing burns free-tier quota. Warm up the models the
+                    // user actually configured (default: 3), not every free
+                    // model the provider advertises.
                     ModelHealthService.getInstance().ensureFresh(config, endpoint.baseUrl(),
-                            endpoint.apiKey(), models, 6, () -> false, null);
+                            endpoint.apiKey(), models, 3, () -> false, null);
                 }
             } catch (Throwable t) {
                 LOG.info("Model warmup skipped: " + t.getMessage());

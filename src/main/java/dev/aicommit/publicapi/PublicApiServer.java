@@ -164,7 +164,7 @@ public final class PublicApiServer implements Disposable {
         JsonObject root = new JsonObject();
         root.add("error", error);
         send(exchange, 404, "application/json", root.toString().getBytes(StandardCharsets.UTF_8));
-        logRequest(method, rawPath, normalized + " (rejected)", 404, startedAt);
+        logRequest(exchange, method, rawPath, normalized + " (rejected)", 404, startedAt);
     }
 
     private void handleModels(HttpExchange exchange, String method, String rawPath,
@@ -174,11 +174,10 @@ public final class PublicApiServer implements Disposable {
             ModelCatalog catalog = ModelCatalogService.getInstance()
                     .get(config, engineBase, engineKey, false, () -> false);
             List<String> free = catalog.freeModelIds();
-            // Probe every free model that is not fresh, so the public list is
-            // complete rather than only containing models the IDE happened to
-            // check first. Fresh results are reused, so this is cheap normally.
-            ModelHealthService.getInstance()
-                    .ensureFresh(config, engineBase, engineKey, free, 0, () -> false, null);
+            // Deliberately no probing here: /v1/models is called by every
+            // client's "test connection" button, and probing all free models
+            // consumes the shared free-tier quota. Only cached verdicts from
+            // the project startup / commit path are used.
             body = PublicModelList.json(catalog, this::availability,
                     System.currentTimeMillis() / 1_000L);
         } catch (Throwable t) {
@@ -186,7 +185,7 @@ public final class PublicApiServer implements Disposable {
             body = "{\"object\":\"list\",\"data\":[]}";
         }
         send(exchange, 200, "application/json", body.getBytes(StandardCharsets.UTF_8));
-        logRequest(method, rawPath, "/models", 200, startedAt);
+        logRequest(exchange, method, rawPath, "/models", 200, startedAt);
     }
 
     private boolean isAvailable(String model) {
@@ -253,7 +252,7 @@ public final class PublicApiServer implements Disposable {
             sendError(exchange, status, "Upstream request failed: " + t.getMessage());
         } finally {
             exchange.close();
-            logRequest(method, rawPath, suffix, status, startedAt);
+            logRequest(exchange, method, rawPath, suffix, status, startedAt);
         }
     }
 
@@ -273,19 +272,26 @@ public final class PublicApiServer implements Disposable {
      * diagnosable without an IDE log viewer. Silent on any IO problem: the
      * endpoint is a convenience, not a logging service.
      */
-    private void logRequest(String method, String rawPath, String targetPath, int status,
-                            long startedAtMillis) {
+    private void logRequest(HttpExchange exchange, String method, String rawPath, String targetPath,
+                            int status, long startedAtMillis) {
         java.nio.file.Path path = requestLog;
         if (path == null) {
             return;
         }
         try {
             java.nio.file.Files.createDirectories(path.getParent());
+            String userAgent = exchange.getRequestHeaders().getFirst("User-Agent");
+            if (userAgent == null || userAgent.isBlank()) {
+                userAgent = "-";
+            } else if (userAgent.length() > 120) {
+                userAgent = userAgent.substring(0, 120) + "...";
+            }
             String line = java.time.Instant.now()
                     + " " + method + " " + rawPath
                     + " -> " + targetPath
                     + " | " + status
                     + " | " + (System.currentTimeMillis() - startedAtMillis) + "ms"
+                    + " | ua=" + userAgent.replaceAll("\\s+", " ")
                     + System.lineSeparator();
             java.nio.file.Files.writeString(path, line, StandardCharsets.UTF_8,
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);

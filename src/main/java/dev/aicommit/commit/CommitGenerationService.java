@@ -75,7 +75,9 @@ public final class CommitGenerationService {
             if (indicator != null) {
                 indicator.setText(Messages.tr("status.checkingModels"));
             }
-            int maxProbe = Math.min(6, Math.max(3, config.maxAttempts() + 2));
+            // Each probe is a real (small) upstream request and burns free-tier
+            // quota, so probe only the models this generation may try.
+            int maxProbe = Math.max(1, Math.min(3, config.maxAttempts()));
             Map<String, ModelAvailability> availability = ModelHealthService.getInstance()
                     .ensureFresh(config, endpoint.baseUrl(), endpoint.apiKey(), candidates, maxProbe,
                             indicator == null ? () -> false : indicator::isCanceled, indicator);
